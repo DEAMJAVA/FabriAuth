@@ -8,8 +8,8 @@
 		"DEAMJAVA"
 	],
 	"contact": {
-		"homepage": "https://github.com/DEAMJAVA/SoulDealers/FabriAuth",
-		"sources": "https://github.com/DEAMJAVA/SoulDealers/FabriAuth"
+		"homepage": "https://github.com/DEAMJAVA/FabriAuth",
+		"sources": "https://github.com/DEAMJAVA/FabriAuth"
 	},
 	"license": "",
 	"icon": "assets/fabri-auth/icon.png",
