@@ -1,0 +1,35 @@
+{
+	"schemaVersion": 1,
+	"id": "fabri-auth",
+	"version": "${version}",
+	"name": "Fabri Auth",
+	"description": "A Fabric Authentication Mod",
+	"authors": [
+		"DEAMJAVA"
+	],
+	"contact": {
+		"homepage": "https://github.com/DEAMJAVA/SoulDealers/FabriAuth",
+		"sources": "https://github.com/DEAMJAVA/SoulDealers/FabriAuth"
+	},
+	"license": "",
+	"icon": "assets/fabri-auth/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "net.deamjava.fabri_auth.FabriAuth",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"fabri-auth.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.1",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}
