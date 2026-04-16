@@ -3,7 +3,8 @@
 	"package": "net.deamjava.fabri_auth.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-
+		"ServerLoginPacketListenerImplMixin",
+		"ServerGamePacketListenerImplMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

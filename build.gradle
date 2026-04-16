@@ -10,13 +10,8 @@ version = project.mod_version
 group = project.maven_group
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
-}
 
+}
 loom {
 	splitEnvironmentSourceSets()
 
@@ -38,6 +33,22 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	modImplementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+
+	// BCrypt for password hashing
+	implementation("at.favre.lib:bcrypt:0.10.2")
+	include("at.favre.lib:bcrypt:0.10.2")
+	// BCrypt transitively needs this
+	implementation("at.favre.lib:bytes:1.5.0")
+	include("at.favre.lib:bytes:1.5.0")
+
+	// Gson for config
+	implementation("com.google.code.gson:gson:2.10.1")
+
+	// LuckPerms API (compileOnly - present on server at runtime)
+	compileOnly("net.luckperms:api:5.4")
+
+	// Floodgate API (compileOnly)
+	//compileOnly("org.geysermc.floodgate:api:2.2.2-SNAPSHOT")
 }
 
 processResources {
