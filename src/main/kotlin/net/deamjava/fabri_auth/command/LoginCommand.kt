@@ -346,6 +346,11 @@ object LoginCommand {
         val uuid = player.uuid
         val username = player.name.string
 
+        if (!AuthStateManager.isAuthenticated(uuid)) {
+            player.sendMessage(cfg.messageNotLoggedIn)
+            return
+        }
+
         if (AuthStateManager.getJoinMode(uuid) == JoinMode.PREMIUM) {
             player.sendMessage(cfg.messageAlreadyPremium)
             return
