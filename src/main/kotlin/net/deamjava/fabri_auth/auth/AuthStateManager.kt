@@ -198,22 +198,20 @@ object AuthStateManager {
 
     fun setPremiumMode(uuid: UUID, username: String, enable: Boolean, mojangUuid: UUID? = null) {
         val targetUuid = if (enable && mojangUuid != null) mojangUuid else uuid
-        val existing = playerData.remove(targetUuid)
-            ?: playerData.remove(uuid)
-            ?: playerData.remove(PremiumManager.offlineUuid(username))
-            ?: playerData.entries.firstOrNull { it.value.username.equals(username, ignoreCase = true) }?.let { entry ->
-                playerData.remove(entry.key)
-            }
-            ?: PlayerAuthData(
-                uuid = targetUuid,
-                username = username,
-                passwordHash = null,
-                lastIp = null
-            )
 
-        playerData[targetUuid] = existing.copy(
+        // Explicitly remove ALL possible old keys first
+        val offlineUuid = PremiumManager.offlineUuid(username)
+        playerData.remove(offlineUuid)
+        playerData.remove(uuid)
+        if (mojangUuid != null) playerData.remove(mojangUuid)
+        // Also sweep by username to catch any orphan entries
+        playerData.entries.removeIf { it.value.username.equals(username, ignoreCase = true) }
+
+        playerData[targetUuid] = PlayerAuthData(
             uuid = targetUuid,
             username = username,
+            passwordHash = null, // carry over if needed — see below
+            lastIp = null,
             premiumMode = enable,
             mojangUuid = if (enable) mojangUuid?.toString() else null,
             joinMode = if (enable) JoinMode.PREMIUM else JoinMode.OFFLINE

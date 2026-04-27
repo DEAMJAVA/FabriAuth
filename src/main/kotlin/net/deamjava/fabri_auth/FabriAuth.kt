@@ -66,7 +66,7 @@ object FabriAuth : ModInitializer {
 				return@register
 			}
 
-			if (CarpetHook.isFakePlayer(username)) {
+			if (CarpetHook.isFakePlayer(player)) {
 				AuthStateManager.markAuthenticated(uuid, ip)
 				return@register
 			}

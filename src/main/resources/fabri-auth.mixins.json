@@ -1,15 +1,15 @@
 {
-	"required": true,
-	"package": "net.deamjava.fabri_auth.mixin",
-	"compatibilityLevel": "JAVA_21",
-	"mixins": [
-		"ServerLoginPacketListenerImplMixin",
-		"ServerGamePacketListenerImplMixin"
-	],
-	"injectors": {
-		"defaultRequire": 1
-	},
-	"overwrites": {
-		"requireAnnotations": true
+  "required": true,
+  "package": "net.deamjava.fabri_auth.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerGamePacketListenerImplMixin",
+    "ServerLoginPacketListenerImplMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
 	}
 }

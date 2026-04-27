@@ -17,6 +17,7 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -126,9 +127,26 @@ public abstract class ServerLoginPacketListenerImplMixin {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private void fabriAuth$setState(String stateName) {
         try {
-            Field stateField = ServerLoginPacketListenerImpl.class.getDeclaredField("state");
+            Field stateField = null;
+            for (Field f : ServerLoginPacketListenerImpl.class.getDeclaredFields()) {
+                if (f.getType().isEnum()) {
+                    // Check if this enum has the state we're looking for
+                    boolean hasKey = false;
+                    for (Object constant : f.getType().getEnumConstants()) {
+                        if (((Enum<?>)constant).name().equals(stateName)) {
+                            hasKey = true;
+                            break;
+                        }
+                    }
+                    if (hasKey) {
+                        stateField = f;
+                        break;
+                    }
+                }
+            }
+            if (stateField == null) throw new RuntimeException("Could not find login state field");
             stateField.setAccessible(true);
-            Class<? extends Enum> enumClass = (Class<? extends Enum>) stateField.getType().asSubclass(Enum.class);
+            Class<? extends Enum> enumClass = (Class<? extends Enum>) stateField.getType();
             Enum state = Enum.valueOf((Class) enumClass, stateName);
             stateField.set(this, state);
         } catch (ReflectiveOperationException e) {

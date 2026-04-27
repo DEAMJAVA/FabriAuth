@@ -44,7 +44,7 @@ object LimboManager {
     private val savedStates = ConcurrentHashMap<UUID, SavedState>()
     private val pendingLimbo = ConcurrentHashMap.newKeySet<UUID>()
 
-    private val LIMBO_SPAWN = BlockPos(0, 4, 0)
+    private val LIMBO_SPAWN = BlockPos(0, 1, 0)
 
     private val persistFile: File by lazy {
         FabricLoader.getInstance()

@@ -6,12 +6,12 @@
       "biome": "minecraft:plains",
       "layers": [
         {
-          "height": 64,
-          "block": "minecraft:air"
-        },
-        {
           "height": 1,
           "block": "minecraft:barrier"
+        },
+        {
+          "height": 63,
+          "block": "minecraft:air"
         }
       ],
       "features": false,
