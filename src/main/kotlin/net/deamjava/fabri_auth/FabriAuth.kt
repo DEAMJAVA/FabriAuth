@@ -1,19 +1,23 @@
-// src/main/kotlin/net/deamjava/fabri_auth/FabriAuth.kt
 package net.deamjava.fabri_auth
 
+import net.deamjava.fabri_auth.auth.AuthState
 import net.deamjava.fabri_auth.auth.AuthStateManager
+import net.deamjava.fabri_auth.auth.JoinMode
+import net.deamjava.fabri_auth.auth.PremiumManager
 import net.deamjava.fabri_auth.command.LoginCommand
 import net.deamjava.fabri_auth.config.ConfigLoader
 import net.deamjava.fabri_auth.integration.CarpetHook
 import net.deamjava.fabri_auth.integration.FloodgateHook
 import net.deamjava.fabri_auth.integration.VanishHook
+import net.deamjava.fabri_auth.limbo.LimboManager
 import net.deamjava.fabri_auth.luckperms.LuckPermsHook
-import net.deamjava.fabri_auth.session.SessionManager
+import net.deamjava.fabri_auth.auth.SessionManager
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.minecraft.network.chat.Component
 
 object FabriAuth : ModInitializer {
 
@@ -22,76 +26,168 @@ object FabriAuth : ModInitializer {
 	override fun onInitialize() {
 		println("[FabriAuth] Initializing...")
 
-		// Load config first
 		ConfigLoader.load()
-
-		// Load persisted player data
 		AuthStateManager.load()
 
-		// Init integrations
 		LuckPermsHook.tryInit()
 		FloodgateHook.tryInit()
 		CarpetHook.tryInit()
 		VanishHook.tryInit()
 
-		// Register commands
 		CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
 			LoginCommand.register(dispatcher)
 		}
 
-		// Player join: set initial state, check session, hide if needed
-		ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
+		ServerLifecycleEvents.SERVER_STARTED.register { server ->
+			LimboManager.load(server)
+		}
+
+		ServerPlayConnectionEvents.JOIN.register { handler, _, _ ->
 			val player = handler.player
 			val uuid = player.uuid
-			val ip = (player.connection.remoteAddress
-					as? java.net.InetSocketAddress)?.address?.hostAddress
+			val ip = (player.connection.remoteAddress as? java.net.InetSocketAddress)
+				?.address?.hostAddress
+			val username = player.name.string
+			val server = player.level().server
+			val usesAuthentication = server.usesAuthentication()
+			val cfg = ConfigLoader.config
 
-			// Floodgate / Bedrock players skip auth
+			if (AuthStateManager.isAuthenticated(uuid)) {
+				if (AuthStateManager.getJoinMode(uuid) == JoinMode.UNSET) {
+					AuthStateManager.setJoinMode(uuid, username, JoinMode.PREMIUM)
+				}
+				if (cfg.sessionEnabled && ip != null) SessionManager.createSession(uuid, ip)
+				LuckPermsHook.invalidateContexts(player)
+				return@register
+			}
+
 			if (FloodgateHook.isBedrockPlayer(uuid)) {
 				AuthStateManager.markAuthenticated(uuid, ip)
 				return@register
 			}
 
-			// Carpet fake players skip auth
-			if (CarpetHook.isFakePlayer(player.name.string)) {
+			if (CarpetHook.isFakePlayer(username)) {
 				AuthStateManager.markAuthenticated(uuid, ip)
 				return@register
 			}
 
-			// Check for valid session
+			if (usesAuthentication) {
+				if (AuthStateManager.getJoinMode(uuid) == JoinMode.UNSET) {
+					AuthStateManager.setJoinMode(uuid, username, JoinMode.PREMIUM)
+				}
+				AuthStateManager.markAuthenticated(uuid, ip)
+				if (cfg.sessionEnabled && ip != null) SessionManager.createSession(uuid, ip)
+				LuckPermsHook.invalidateContexts(player)
+				return@register
+			}
+
+			if (LimboManager.hasSavedState(uuid)) {
+				AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
+				LimboManager.sendToLimbo(player)
+				VanishHook.hidePlayer(player)
+				LuckPermsHook.invalidateContexts(player)
+				val msg = if (AuthStateManager.isRegistered(uuid))
+					cfg.messageNotLoggedIn
+				else
+					cfg.messageNotRegistered
+				player.sendSystemMessage(Component.literal(msg))
+				return@register
+			}
+
+			if (cfg.autoPremiumLogin && usesAuthentication) {
+				if (AuthStateManager.isPremiumAutoAuthCandidate(uuid, username)) {
+					AuthStateManager.markAuthenticated(uuid, ip)
+					LuckPermsHook.invalidateContexts(player)
+					player.sendSystemMessage(Component.literal("§aWelcome back, $username!"))
+					return@register
+				}
+
+				val isPremium = AuthStateManager.isPremium(uuid)
+				if (isPremium) {
+					AuthStateManager.markAuthenticated(uuid, ip)
+					if (ip != null) SessionManager.createSession(uuid, ip)
+					LuckPermsHook.invalidateContexts(player)
+					VanishHook.showPlayer(player)
+					player.sendSystemMessage(Component.literal("§aWelcome back, $username! (Premium)"))
+					return@register
+				}
+
+				AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
+				LimboManager.sendToLimbo(player)
+				VanishHook.hidePlayer(player)
+				LuckPermsHook.invalidateContexts(player)
+
+				java.util.concurrent.CompletableFuture.supplyAsync {
+					PremiumManager.fetchMojangUuid(username)
+				}.thenAcceptAsync({ mojangResult ->
+					if (!player.isAlive) return@thenAcceptAsync
+
+					if (mojangResult != null) {
+						if (AuthStateManager.getJoinMode(uuid) == JoinMode.UNSET) {
+							AuthStateManager.setJoinMode(mojangResult, username, JoinMode.PREMIUM)
+						}
+						AuthStateManager.setPremiumMode(uuid, username, enable = true, mojangUuid = mojangResult)
+						AuthStateManager.markAuthenticated(uuid, ip)
+						LimboManager.returnFromLimbo(player)
+						VanishHook.showPlayer(player)
+						LuckPermsHook.invalidateContexts(player)
+						player.sendSystemMessage(Component.literal("§aWelcome, $username! (Premium account verified)"))
+					} else {
+						if (AuthStateManager.getJoinMode(uuid) == JoinMode.UNSET) {
+							AuthStateManager.setJoinMode(uuid, username, JoinMode.OFFLINE)
+						}
+						player.sendSystemMessage(
+							Component.literal(
+								if (AuthStateManager.isRegistered(uuid)) cfg.messageNotLoggedIn
+								else cfg.messageNotRegistered
+							)
+						)
+					}
+				}, server)
+				return@register
+			}
+
+			if (!cfg.autoPremiumLogin && usesAuthentication && AuthStateManager.isPremium(uuid)) {
+				AuthStateManager.markAuthenticated(uuid, ip)
+				if (ip != null) SessionManager.createSession(uuid, ip)
+				LuckPermsHook.invalidateContexts(player)
+				player.sendSystemMessage(Component.literal("§aWelcome back, $username! (Premium)"))
+				return@register
+			}
+
 			if (ip != null && SessionManager.hasValidSession(uuid, ip)) {
 				AuthStateManager.markAuthenticated(uuid, ip)
 				LuckPermsHook.invalidateContexts(player)
-				player.sendSystemMessage(
-					net.minecraft.network.chat.Component.literal(
-						ConfigLoader.config.messageSessionRestored
-					)
-				)
+				player.sendSystemMessage(Component.literal(cfg.messageSessionRestored))
 				return@register
 			}
 
-			// Needs authentication
-			AuthStateManager.setState(uuid, net.deamjava.fabri_auth.auth.AuthState.UNAUTHENTICATED)
+			if (AuthStateManager.getJoinMode(uuid) == JoinMode.UNSET) {
+				AuthStateManager.setJoinMode(uuid, username, JoinMode.OFFLINE)
+			}
+			AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
+			LimboManager.sendToLimbo(player)
 			VanishHook.hidePlayer(player)
 			LuckPermsHook.invalidateContexts(player)
 
-			// Send prompt
 			val msg = if (AuthStateManager.isRegistered(uuid))
-				ConfigLoader.config.messageNotLoggedIn
+				cfg.messageNotLoggedIn
 			else
-				ConfigLoader.config.messageNotRegistered
-			player.sendSystemMessage(net.minecraft.network.chat.Component.literal(msg))
+				cfg.messageNotRegistered
+			player.sendSystemMessage(Component.literal(msg))
 		}
 
-		// Player leave: clean up state
 		ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-			val uuid = handler.player.uuid
+			val player = handler.player
+			val uuid = player.uuid
 			AuthStateManager.onPlayerLeave(uuid)
+			LimboManager.onPlayerDisconnect(uuid, player.level().server)
 		}
 
-		// Periodic session pruning (every 5 minutes = 6000 ticks)
 		var tickCounter = 0
-		ServerTickEvents.END_SERVER_TICK.register { _ ->
+		ServerTickEvents.END_SERVER_TICK.register { server ->
+			LimboManager.tickPendingTeleports(server)
+
 			tickCounter++
 			if (tickCounter >= 6000) {
 				tickCounter = 0
@@ -99,9 +195,10 @@ object FabriAuth : ModInitializer {
 			}
 		}
 
-		// Save on server stop
-		ServerLifecycleEvents.SERVER_STOPPING.register { _ ->
+
+		ServerLifecycleEvents.SERVER_STOPPING.register { server ->
 			AuthStateManager.save()
+			LimboManager.save(server)
 			println("[FabriAuth] Data saved on server stop.")
 		}
 

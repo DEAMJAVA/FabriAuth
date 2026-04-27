@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:overworld",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "minecraft:plains",
+      "layers": [
+        {
+          "height": 64,
+          "block": "minecraft:air"
+        },
+        {
+          "height": 1,
+          "block": "minecraft:barrier"
+        }
+      ],
+      "features": false,
+      "lakes": false
+    }
+  }
+}

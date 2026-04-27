@@ -1,4 +1,3 @@
-// src/main/kotlin/net/deamjava/fabri_auth/util/Extensions.kt
 package net.deamjava.fabri_auth.util
 
 import net.minecraft.network.chat.Component

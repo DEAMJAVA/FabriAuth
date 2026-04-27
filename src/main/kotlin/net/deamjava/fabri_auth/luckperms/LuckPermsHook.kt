@@ -46,13 +46,11 @@ object LuckPermsHook {
         })
     }
 
-    /** Signals LuckPerms to recalculate contexts for this player. */
     fun invalidateContexts(player: ServerPlayer) {
         if (!available) return
         try {
             luckPerms?.contextManager?.signalContextUpdate(player)
         } catch (e: Exception) {
-            // best effort
         }
     }
 }

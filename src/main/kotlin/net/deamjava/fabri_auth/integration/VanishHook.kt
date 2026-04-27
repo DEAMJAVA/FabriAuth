@@ -8,13 +8,6 @@ import net.minecraft.network.protocol.game.ClientboundPlayerInfoRemovePacket
 import net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket
 import java.util.UUID
 
-/**
- * A lightweight vanish implementation that hides unauthenticated players
- * from the tab list and prevents them from being seen by others.
- *
- * For full vanish mod integration (e.g. Styled Playerlist / VanishMod),
- * you would call their APIs here. We provide a built-in lightweight fallback.
- */
 object VanishHook {
 
     private var available = false
@@ -26,7 +19,6 @@ object VanishHook {
         println("[FabriAuth] Vanish integration enabled (built-in).")
     }
 
-    /** Hide player from all authenticated players' tab lists. */
     fun hidePlayer(target: ServerPlayer) {
         if (!available) return
         hiddenPlayers.add(target.uuid)
@@ -39,7 +31,6 @@ object VanishHook {
         }
     }
 
-    /** Reveal player to all others. */
     fun showPlayer(target: ServerPlayer) {
         if (!available) return
         hiddenPlayers.remove(target.uuid)

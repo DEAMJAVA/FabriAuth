@@ -1,4 +1,3 @@
-// src/main/kotlin/net/deamjava/fabri_auth/integration/FloodgateHook.kt
 package net.deamjava.fabri_auth.integration
 
 import net.deamjava.fabri_auth.config.ConfigLoader
@@ -8,7 +7,6 @@ import java.util.UUID
 object FloodgateHook {
 
     private var available = false
-    // We use reflection to avoid hard compile-time dependency beyond compileOnly
     private var apiClass: Class<*>? = null
     private var instanceGetter: java.lang.reflect.Method? = null
     private var isFloodgatePlayerMethod: java.lang.reflect.Method? = null
@@ -27,11 +25,6 @@ object FloodgateHook {
         }
     }
 
-    /**
-     * Returns true if this UUID belongs to a Bedrock/Floodgate player.
-     * Floodgate players are typically auto-authenticated (Bedrock accounts
-     * don't have a password on the Java side).
-     */
     fun isBedrockPlayer(uuid: UUID): Boolean {
         if (!available) return false
         return try {

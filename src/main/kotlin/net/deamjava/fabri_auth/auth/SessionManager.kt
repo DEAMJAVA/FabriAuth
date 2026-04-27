@@ -1,5 +1,4 @@
-// src/main/kotlin/net/deamjava/fabri_auth/session/SessionManager.kt
-package net.deamjava.fabri_auth.session
+package net.deamjava.fabri_auth.auth
 
 import net.deamjava.fabri_auth.config.ConfigLoader
 import java.util.UUID
@@ -13,17 +12,12 @@ data class Session(
 
 object SessionManager {
 
-    /** uuid -> Session */
     private val sessions = ConcurrentHashMap<UUID, Session>()
 
     fun createSession(uuid: UUID, ip: String) {
         sessions[uuid] = Session(uuid, ip)
     }
 
-    /**
-     * Returns true if a valid unexpired session exists for this uuid+ip combo.
-     * If ip-based sessions are disabled, only checks uuid and expiry.
-     */
     fun hasValidSession(uuid: UUID, ip: String): Boolean {
         val cfg = ConfigLoader.config
         if (!cfg.sessionEnabled) return false
