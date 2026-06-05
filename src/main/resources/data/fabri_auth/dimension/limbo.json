@@ -15,7 +15,8 @@
         }
       ],
       "features": false,
-      "lakes": false
+      "lakes": false,
+      "structures:": false
     }
   }
 }

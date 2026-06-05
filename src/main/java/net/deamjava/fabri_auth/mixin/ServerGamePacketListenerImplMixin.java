@@ -31,8 +31,10 @@ public abstract class ServerGamePacketListenerImplMixin {
                 ((ServerGamePacketListenerImpl)(Object)this).teleport(0.5, 4.0, 0.5, 0f, 0f);
             } else {
                 ((ServerGamePacketListenerImpl)(Object)this).teleport(
-                        player.getX(), player.getY(), player.getZ(),
-                        player.getYRot(), player.getXRot()
+                        LimboManager.INSTANCE.getLIMBO_SPAWN_X(),
+                        LimboManager.INSTANCE.getLIMBO_SPAWN_Y(),
+                        LimboManager.INSTANCE.getLIMBO_SPAWN_Z(),
+                        0f, 0f
                 );
             }
             ci.cancel();

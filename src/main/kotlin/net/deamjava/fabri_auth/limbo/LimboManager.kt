@@ -19,6 +19,8 @@ import java.util.concurrent.ConcurrentHashMap
 
 object LimboManager {
 
+
+
     private val GSON = GsonBuilder().setPrettyPrinting().create()
 
     private data class PersistedState(
@@ -45,6 +47,10 @@ object LimboManager {
     private val pendingLimbo = ConcurrentHashMap.newKeySet<UUID>()
 
     private val LIMBO_SPAWN = BlockPos(0, 1, 0)
+
+    val LIMBO_SPAWN_X get() = LIMBO_SPAWN.x.toDouble() + 0.5
+    val LIMBO_SPAWN_Y get() = LIMBO_SPAWN.y.toDouble()
+    val LIMBO_SPAWN_Z get() = LIMBO_SPAWN.z.toDouble() + 0.5
 
     private val persistFile: File by lazy {
         FabricLoader.getInstance()
@@ -177,19 +183,8 @@ object LimboManager {
 
     fun hasSavedState(uuid: UUID): Boolean = savedStates.containsKey(uuid)
 
-    fun isInLimbo(player: ServerPlayer): Boolean {
-        savedStates[player.uuid] ?: return false
-        val limboLevel = getLimboLevel(player.level().server) ?: return false
-        if (player.level().dimension() != limboLevel.dimension()) return false
-
-        val limboX = LIMBO_SPAWN.x.toDouble() + 0.5
-        val limboY = LIMBO_SPAWN.y.toDouble()
-        val limboZ = LIMBO_SPAWN.z.toDouble() + 0.5
-
-        return kotlin.math.abs(player.x - limboX) < 1.0 &&
-                kotlin.math.abs(player.y - limboY) < 3.0 &&
-                kotlin.math.abs(player.z - limboZ) < 1.0
-    }
+    fun isInLimbo(player: ServerPlayer): Boolean =
+        savedStates.containsKey(player.uuid) || pendingLimbo.contains(player.uuid)
 
     private fun executeSendToLimbo(player: ServerPlayer) {
         val uuid = player.uuid
