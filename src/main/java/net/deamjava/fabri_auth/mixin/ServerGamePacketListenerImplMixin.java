@@ -26,17 +26,7 @@ public abstract class ServerGamePacketListenerImplMixin {
         if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
         if (!ConfigLoader.INSTANCE.getConfig().getBlockMovementUntilAuthed()) return;
 
-        if (LoginCommand.isBlocked(player)) {
-            if (LimboManager.INSTANCE.isInLimbo(player)) {
-                ((ServerGamePacketListenerImpl)(Object)this).teleport(0.5, 4.0, 0.5, 0f, 0f);
-            } else {
-                ((ServerGamePacketListenerImpl)(Object)this).teleport(
-                        LimboManager.INSTANCE.getLIMBO_SPAWN_X(),
-                        LimboManager.INSTANCE.getLIMBO_SPAWN_Y(),
-                        LimboManager.INSTANCE.getLIMBO_SPAWN_Z(),
-                        0f, 0f
-                );
-            }
+        if (LoginCommand.isBlocked(player) && LimboManager.INSTANCE.isInLimbo(player)) {
             ci.cancel();
         }
     }
