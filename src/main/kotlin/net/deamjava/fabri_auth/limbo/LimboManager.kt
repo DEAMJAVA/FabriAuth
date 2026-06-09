@@ -6,6 +6,8 @@ import net.deamjava.fabri_auth.config.ConfigLoader
 import net.fabricmc.loader.api.FabricLoader
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
+import net.minecraft.nbt.NbtOps
+import net.minecraft.nbt.TagParser
 import net.minecraft.resources.Identifier
 import net.minecraft.resources.ResourceKey
 import net.minecraft.server.MinecraftServer
@@ -18,8 +20,6 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 object LimboManager {
-
-
 
     private val GSON = GsonBuilder().setPrettyPrinting().create()
 
@@ -61,6 +61,8 @@ object LimboManager {
 
     fun load(server: MinecraftServer) {
         if (!persistFile.exists()) return
+        val registryOps = server.registryAccess()
+            .createSerializationContext(NbtOps.INSTANCE)
         try {
             val type = object : TypeToken<Map<String, PersistedState>>() {}.type
             val raw: Map<String, PersistedState> =
@@ -74,11 +76,8 @@ object LimboManager {
                 val inv = ps.inventoryNbt.map { nbtStr ->
                     if (nbtStr.isBlank()) ItemStack.EMPTY
                     else runCatching {
-                        val tag = net.minecraft.nbt.TagParser.parseCompoundFully(nbtStr)
-                        // parseOptional removed — use CODEC directly
-                        val result = ItemStack.CODEC.parse(
-                            net.minecraft.nbt.NbtOps.INSTANCE, tag
-                        )
+                        val tag = TagParser.parseCompoundFully(nbtStr)
+                        val result = ItemStack.CODEC.parse(registryOps, tag)
                         result.resultOrPartial { err ->
                             println("[FabriAuth] Failed to parse item: $err")
                         }.orElse(ItemStack.EMPTY)
@@ -99,9 +98,12 @@ object LimboManager {
     }
 
     fun save(server: MinecraftServer) {
+        val registryOps = server.registryAccess()
+            .createSerializationContext(NbtOps.INSTANCE)
         try {
             persistFile.parentFile?.mkdirs()
-            val serializable = savedStates.mapKeys { it.key.toString() }
+            val serializable = savedStates
+                .mapKeys { it.key.toString() }
                 .mapValues { (_, state) ->
                     PersistedState(
                         dimensionKey = state.dimensionKey.identifier().toString(),
@@ -110,10 +112,7 @@ object LimboManager {
                         inventoryNbt = state.inventory.map { stack ->
                             if (stack.isEmpty) ""
                             else runCatching {
-                                // stack.save() removed — use CODEC directly
-                                val encoded = ItemStack.CODEC.encodeStart(
-                                    net.minecraft.nbt.NbtOps.INSTANCE, stack
-                                )
+                                val encoded = ItemStack.CODEC.encodeStart(registryOps, stack)
                                 encoded.resultOrPartial { err ->
                                     println("[FabriAuth] Failed to encode item: $err")
                                 }.orElse(null)?.toString() ?: ""
@@ -162,14 +161,11 @@ object LimboManager {
             false
         )
 
-        // Persist the removal so the file stays in sync
         save(player.level().server)
     }
 
     fun onPlayerDisconnect(uuid: UUID, server: MinecraftServer) {
         pendingLimbo.remove(uuid)
-        // savedStates is intentionally kept — player reconnects and gets sent
-        // back to limbo, then returnFromLimbo restores everything on auth.
         if (savedStates.containsKey(uuid)) {
             save(server)
         }
