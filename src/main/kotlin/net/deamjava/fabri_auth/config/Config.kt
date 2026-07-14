@@ -10,6 +10,9 @@ data class Config(
     @SerializedName("debug_raw_password_storage") val debugRawPasswordStorage: Boolean = false,
     @SerializedName("require_login") val requireLogin: Boolean = true,
 
+    @SerializedName("limbo_clear_inventory") val limboClearInventory: Boolean = true,
+    @SerializedName("block_inventory_until_authed") val blockInventoryUntilAuthed: Boolean = true,
+
     @SerializedName("auto_premium_login") val autoPremiumLogin: Boolean = true,
 
     @SerializedName("session_enabled") val sessionEnabled: Boolean = true,

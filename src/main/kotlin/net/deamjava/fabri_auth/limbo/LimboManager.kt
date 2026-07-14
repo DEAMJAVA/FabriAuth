@@ -187,7 +187,7 @@ object LimboManager {
         val limboLevel = getLimboLevel(player.level().server) ?: return
 
         if (savedStates.containsKey(uuid)) {
-            player.inventory.clearContent()
+            if (ConfigLoader.config.limboClearInventory) player.inventory.clearContent()  // <- guard
             teleportToLimbo(player, limboLevel)
             return
         }
@@ -199,7 +199,7 @@ object LimboManager {
             inventory = copyInventory(player)
         )
 
-        player.inventory.clearContent()
+        if (ConfigLoader.config.limboClearInventory) player.inventory.clearContent()  // <- guard
         teleportToLimbo(player, limboLevel)
 
         save(player.level().server)

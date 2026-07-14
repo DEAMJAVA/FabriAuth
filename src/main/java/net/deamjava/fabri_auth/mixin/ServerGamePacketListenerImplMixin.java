@@ -7,6 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.spongepowered.asm.mixin.Mixin;
@@ -59,6 +60,20 @@ public abstract class ServerGamePacketListenerImplMixin {
             player.sendSystemMessage(
                     Component.literal(ConfigLoader.INSTANCE.getConfig().getMessageNotLoggedIn())
             );
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "handlePlayerAction", at = @At("HEAD"), cancellable = true)
+    private void fabriAuth$blockItemDrop(ServerboundPlayerActionPacket packet, CallbackInfo ci) {
+        if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
+        if (!ConfigLoader.INSTANCE.getConfig().getBlockInventoryUntilAuthed()) return;
+
+        ServerboundPlayerActionPacket.Action action = packet.getAction();
+        if ((action == ServerboundPlayerActionPacket.Action.DROP_ITEM ||
+                action == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)
+                && LoginCommand.isBlocked(player)
+                && LimboManager.INSTANCE.isInLimbo(player)) {
             ci.cancel();
         }
     }
