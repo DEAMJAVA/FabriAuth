@@ -6,6 +6,7 @@ import net.deamjava.fabri_auth.auth.AuthState
 import net.deamjava.fabri_auth.auth.AuthStateManager
 import net.deamjava.fabri_auth.auth.JoinMode
 import net.deamjava.fabri_auth.auth.PasswordManager
+import net.deamjava.fabri_auth.auth.PlayerDataMigrator
 import net.deamjava.fabri_auth.auth.PremiumManager
 import net.deamjava.fabri_auth.config.ConfigLoader
 import net.deamjava.fabri_auth.integration.VanishHook
@@ -19,9 +20,21 @@ import net.minecraft.commands.arguments.EntityArgument
 import net.minecraft.network.chat.Component
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+
+enum class MigrateDirection {
+    PREMIUM_TO_CRACKED,
+    CRACKED_TO_PREMIUM
+}
 
 object LoginCommand {
+
+    private data class PendingMigration(val direction: MigrateDirection, val expiresAt: Long)
+
+    private val pendingMigrations = ConcurrentHashMap<UUID, PendingMigration>()
+    private const val MIGRATION_CONFIRM_WINDOW_MS = 30_000L
 
     fun register(dispatcher: CommandDispatcher<CommandSourceStack>) {
 
@@ -114,6 +127,38 @@ object LoginCommand {
                     handleCracked(player)
                     1
                 }
+        )
+
+        dispatcher.register(
+            Commands.literal("migrate")
+                .then(
+                    Commands.literal("premiumToCracked")
+                        .executes { ctx ->
+                            handleMigrateRequest(ctx.source.playerOrException, MigrateDirection.PREMIUM_TO_CRACKED)
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("crackedToPremium")
+                        .executes { ctx ->
+                            handleMigrateRequest(ctx.source.playerOrException, MigrateDirection.CRACKED_TO_PREMIUM)
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("confirm")
+                        .executes { ctx ->
+                            handleMigrateConfirm(ctx.source.playerOrException)
+                            1
+                        }
+                )
+                .then(
+                    Commands.literal("cancel")
+                        .executes { ctx ->
+                            handleMigrateCancel(ctx.source.playerOrException)
+                            1
+                        }
+                )
         )
 
         dispatcher.register(
@@ -395,6 +440,138 @@ object LoginCommand {
     }
 
 
+    fun handleMigrateRequest(player: ServerPlayer, direction: MigrateDirection) {
+        val cfg = ConfigLoader.config
+        val uuid = player.uuid
+
+        if (!AuthStateManager.isAuthenticated(uuid)) {
+            player.sendMessage(cfg.messageNotLoggedIn)
+            return
+        }
+
+        val currentMode = AuthStateManager.getJoinMode(uuid)
+        when (direction) {
+            MigrateDirection.PREMIUM_TO_CRACKED -> {
+                if (currentMode != JoinMode.PREMIUM) {
+                    player.sendMessage("§cYou are not currently in premium mode. Nothing to migrate.")
+                    return
+                }
+            }
+            MigrateDirection.CRACKED_TO_PREMIUM -> {
+                if (currentMode != JoinMode.OFFLINE) {
+                    player.sendMessage("§cYou are not currently in cracked/offline mode. Nothing to migrate.")
+                    return
+                }
+            }
+        }
+
+        pendingMigrations[uuid] = PendingMigration(
+            direction = direction,
+            expiresAt = System.currentTimeMillis() + MIGRATION_CONFIRM_WINDOW_MS
+        )
+
+        val (fromLabel, toLabel) = when (direction) {
+            MigrateDirection.PREMIUM_TO_CRACKED -> "Premium" to "Cracked"
+            MigrateDirection.CRACKED_TO_PREMIUM -> "Cracked" to "Premium"
+        }
+        player.sendMessage("§c⚠ This will migrate your account from $fromLabel to $toLabel mode.")
+        player.sendMessage("§cYour password and registration move with it, but this action is IRREVERSIBLE.")
+        player.sendMessage("§eType §f/migrate confirm §eto proceed, or §f/migrate cancel §eto abort. " +
+                "This request expires in 30 seconds.")
+    }
+
+    fun handleMigrateConfirm(player: ServerPlayer) {
+        val uuid = player.uuid
+        val username = player.name.string
+        val pending = pendingMigrations[uuid]
+
+        if (pending == null) {
+            player.sendMessage("§cYou have no pending migration. " +
+                    "Use /migrate premiumToCracked or /migrate crackedToPremium first.")
+            return
+        }
+        if (System.currentTimeMillis() > pending.expiresAt) {
+            pendingMigrations.remove(uuid)
+            player.sendMessage("§cYour migration request expired. Please run the /migrate command again.")
+            return
+        }
+        pendingMigrations.remove(uuid)
+
+        when (pending.direction) {
+            MigrateDirection.PREMIUM_TO_CRACKED -> {
+                val targetUuid = PremiumManager.offlineUuid(username)
+                performMigration(
+                    player, uuid, targetUuid, toPremium = false,
+                    successMessage = "§aAccount migrated to Cracked mode. Please reconnect."
+                )
+            }
+
+            MigrateDirection.CRACKED_TO_PREMIUM -> {
+                player.sendMessage("§eVerifying your Mojang account, please wait...")
+                CompletableFuture.supplyAsync {
+                    PremiumManager.fetchMojangUuid(username)
+                }.thenAcceptAsync({ mojangUuid ->
+                    if (mojangUuid == null) {
+                        player.sendMessage(
+                            "§cCould not verify a Mojang account for '$username'. Migration aborted, " +
+                                    "nothing was changed. Make sure your username matches your Mojang account exactly."
+                        )
+                        return@thenAcceptAsync
+                    }
+                    performMigration(
+                        player, uuid, mojangUuid, toPremium = true,
+                        successMessage = "§aAccount migrated to Premium mode. Please reconnect with your official Minecraft account."
+                    )
+                }, player.level().server)
+            }
+        }
+    }
+
+    private fun performMigration(
+        player: ServerPlayer,
+        sourceUuid: UUID,
+        targetUuid: UUID,
+        toPremium: Boolean,
+        successMessage: String
+    ) {
+        val username = player.name.string
+
+        when (PlayerDataMigrator.migrate(player, sourceUuid, targetUuid)) {
+            PlayerDataMigrator.MigrationResult.NothingToMigrate -> {
+                println("[FabriAuth] No vanilla save data found to migrate for $username; " +
+                        "continuing with account-record migration only.")
+            }
+            PlayerDataMigrator.MigrationResult.Success -> {
+            }
+        }
+
+        val migrated = AuthStateManager.migrateAccountData(sourceUuid, targetUuid, username, toPremium = toPremium)
+        if (!migrated) {
+            player.sendMessage("§cMigration failed: no account data was found to migrate. " +
+                    "Your save files were already moved — please contact an admin, this needs manual cleanup.")
+            return
+        }
+
+        SessionManager.invalidateSession(sourceUuid)
+        player.sendMessage(successMessage)
+        player.connection.disconnect(Component.literal(successMessage))
+    }
+
+    fun handleMigrateCancel(player: ServerPlayer) {
+        val uuid = player.uuid
+        if (pendingMigrations.remove(uuid) != null) {
+            player.sendMessage("§eMigration request cancelled.")
+        } else {
+            player.sendMessage("§cYou have no pending migration to cancel.")
+        }
+    }
+
+    /** Clears any pending migration confirmation when a player disconnects, so it can't be confirmed by a future session. */
+    fun clearPendingMigration(uuid: UUID) {
+        pendingMigrations.remove(uuid)
+    }
+
+
     private fun handleAdminPremium(source: CommandSourceStack, username: String) {
         val onlinePlayer = source.server.playerList.getPlayerByName(username)
 
@@ -526,12 +703,13 @@ object LoginCommand {
 
 
     fun doAuthenticate(player: ServerPlayer, ip: String?) {
-        val uuid = player.uuid
-        AuthStateManager.markAuthenticated(uuid, ip)
-        if (ip != null) SessionManager.createSession(uuid, ip)
-        LimboManager.returnFromLimbo(player)
-        VanishHook.showPlayer(player)
-        LuckPermsHook.invalidateContexts(player)
+        LimboManager.returnFromLimbo(player) {
+            val uuid = player.uuid
+            AuthStateManager.markAuthenticated(uuid, ip)
+            if (ip != null) SessionManager.createSession(uuid, ip)
+            VanishHook.showPlayer(player)
+            LuckPermsHook.invalidateContexts(player)
+        }
     }
 
     @JvmStatic

@@ -219,6 +219,29 @@ object AuthStateManager {
         save()
     }
 
+
+    fun migrateAccountData(sourceUuid: UUID, targetUuid: UUID, username: String, toPremium: Boolean): Boolean {
+        val existing = playerData[sourceUuid]
+            ?: playerData.entries.firstOrNull { it.value.username.equals(username, ignoreCase = true) }?.value
+            ?: return false
+
+
+        playerData.remove(sourceUuid)
+        playerData.remove(PremiumManager.offlineUuid(username))
+        playerData.remove(targetUuid)
+        playerData.entries.removeIf { it.value.username.equals(username, ignoreCase = true) }
+
+        playerData[targetUuid] = existing.copy(
+            uuid = targetUuid,
+            username = username,
+            premiumMode = toPremium,
+            mojangUuid = if (toPremium) targetUuid.toString() else null,
+            joinMode = if (toPremium) JoinMode.PREMIUM else JoinMode.OFFLINE
+        )
+        save()
+        return true
+    }
+
     fun getMojangUuid(uuid: UUID): UUID? =
         playerData[uuid]?.mojangUuid?.let {
             runCatching { UUID.fromString(it) }.getOrNull()

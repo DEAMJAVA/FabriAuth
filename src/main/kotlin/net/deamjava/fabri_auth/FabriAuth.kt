@@ -182,11 +182,13 @@ object FabriAuth : ModInitializer {
 			val uuid = player.uuid
 			AuthStateManager.onPlayerLeave(uuid)
 			LimboManager.onPlayerDisconnect(uuid, player.level().server)
+			LoginCommand.clearPendingMigration(uuid)
 		}
 
 		var tickCounter = 0
 		ServerTickEvents.END_SERVER_TICK.register { server ->
 			LimboManager.tickPendingTeleports(server)
+			LimboManager.tickPendingReturns(server)
 
 			tickCounter++
 			if (tickCounter >= 6000) {
