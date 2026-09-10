@@ -2,7 +2,7 @@ package net.deamjava.fabri_auth.mixin;
 
 import net.deamjava.fabri_auth.command.LoginCommand;
 import net.deamjava.fabri_auth.config.ConfigLoader;
-import net.deamjava.fabri_auth.limbo.LimboManager;
+import net.deamjava.fabri_auth.limbo.FakeJoinManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -21,7 +21,7 @@ public abstract class AbstractContainerMenuMixin {
         if (!(player instanceof ServerPlayer sp)) return;
         if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
         if (!ConfigLoader.INSTANCE.getConfig().getBlockInventoryUntilAuthed()) return;
-        if (LoginCommand.isBlocked(sp) && LimboManager.INSTANCE.isInLimbo(sp)) {
+            if (LoginCommand.isBlocked(sp) && FakeJoinManager.INSTANCE.isFakeSession(player.getUUID())) {
             ci.cancel();
             sp.containerMenu.sendAllDataToRemote();
         }

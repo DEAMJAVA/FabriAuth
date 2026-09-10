@@ -9,10 +9,9 @@ import net.deamjava.fabri_auth.auth.PasswordManager
 import net.deamjava.fabri_auth.auth.PlayerDataMigrator
 import net.deamjava.fabri_auth.auth.PremiumManager
 import net.deamjava.fabri_auth.config.ConfigLoader
-import net.deamjava.fabri_auth.integration.VanishHook
-import net.deamjava.fabri_auth.limbo.LimboManager
 import net.deamjava.fabri_auth.luckperms.LuckPermsHook
 import net.deamjava.fabri_auth.auth.SessionManager
+import net.deamjava.fabri_auth.limbo.FakeJoinManager
 import net.deamjava.fabri_auth.util.sendMessage
 import net.minecraft.commands.CommandSourceStack
 import net.minecraft.commands.Commands
@@ -315,10 +314,8 @@ object LoginCommand {
         val uuid = player.uuid
         AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
         SessionManager.invalidateSession(uuid)
-        VanishHook.hidePlayer(player)
         LuckPermsHook.invalidateContexts(player)
-        LimboManager.sendToLimbo(player)
-        player.sendMessage("§eYou have been logged out.")
+        player.connection.disconnect(Component.literal("§eYou have been logged out. Please reconnect."))
     }
 
 
@@ -341,10 +338,8 @@ object LoginCommand {
         AuthStateManager.unregister(uuid)
         SessionManager.invalidateSession(uuid)
         AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
-        VanishHook.hidePlayer(player)
         LuckPermsHook.invalidateContexts(player)
-        LimboManager.sendToLimbo(player)
-        player.sendMessage(cfg.messageUnregisterSuccess)
+        player.connection.disconnect(Component.literal(cfg.messageUnregisterSuccess))
     }
 
     fun handleChangePass(player: ServerPlayer, current: String, newpass: String, confirm: String) {
@@ -669,11 +664,9 @@ object LoginCommand {
         if (ok) {
             SessionManager.invalidateSession(uuid)
             AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
-            VanishHook.hidePlayer(target)
             LuckPermsHook.invalidateContexts(target)
-            LimboManager.sendToLimbo(target)
             source.sendSystemMessage(Component.literal("§a${target.name.string} has been force-unregistered."))
-            target.sendMessage("§cAn admin has unregistered you.")
+            target.connection.disconnect(Component.literal("§cAn admin has unregistered you. Please reconnect."))
         } else {
             source.sendSystemMessage(Component.literal("§cForce-unregister failed."))
         }
@@ -703,13 +696,11 @@ object LoginCommand {
 
 
     fun doAuthenticate(player: ServerPlayer, ip: String?) {
-        LimboManager.returnFromLimbo(player) {
-            val uuid = player.uuid
-            AuthStateManager.markAuthenticated(uuid, ip)
-            if (ip != null) SessionManager.createSession(uuid, ip)
-            VanishHook.showPlayer(player)
-            LuckPermsHook.invalidateContexts(player)
-        }
+        val uuid = player.uuid
+        AuthStateManager.markAuthenticated(uuid, ip)
+        if (ip != null) SessionManager.createSession(uuid, ip)
+        LuckPermsHook.invalidateContexts(player)
+        FakeJoinManager.promote(uuid)
     }
 
     @JvmStatic

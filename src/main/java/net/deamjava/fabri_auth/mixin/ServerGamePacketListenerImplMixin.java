@@ -2,7 +2,7 @@ package net.deamjava.fabri_auth.mixin;
 
 import net.deamjava.fabri_auth.command.LoginCommand;
 import net.deamjava.fabri_auth.config.ConfigLoader;
-import net.deamjava.fabri_auth.limbo.LimboManager;
+import net.deamjava.fabri_auth.limbo.FakeJoinManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
 import net.minecraft.network.protocol.game.ServerboundChatPacket;
@@ -27,7 +27,7 @@ public abstract class ServerGamePacketListenerImplMixin {
         if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
         if (!ConfigLoader.INSTANCE.getConfig().getBlockMovementUntilAuthed()) return;
 
-        if (LoginCommand.isBlocked(player) && LimboManager.INSTANCE.isInLimbo(player)) {
+        if (LoginCommand.isBlocked(player) && FakeJoinManager.INSTANCE.isFakeSession(player.getUUID())) {
             ci.cancel();
         }
     }
@@ -73,7 +73,7 @@ public abstract class ServerGamePacketListenerImplMixin {
         if ((action == ServerboundPlayerActionPacket.Action.DROP_ITEM ||
                 action == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)
                 && LoginCommand.isBlocked(player)
-                && LimboManager.INSTANCE.isInLimbo(player)) {
+                && FakeJoinManager.INSTANCE.isFakeSession(player.getUUID())) {
             ci.cancel();
         }
     }

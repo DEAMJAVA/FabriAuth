@@ -5,6 +5,7 @@
   "mixins": [
     "AbstractContainerMenuMixin",
     "LivingEntityMixin",
+    "PlayerListMixin",
     "ServerGamePacketListenerImplMixin",
     "ServerLoginPacketListenerImplMixin"
   ],
