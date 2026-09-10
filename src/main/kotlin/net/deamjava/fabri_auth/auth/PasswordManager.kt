@@ -7,7 +7,6 @@ object PasswordManager {
 
     fun hash(password: String): String {
         return if (ConfigLoader.config.debugRawPasswordStorage) {
-            // DEBUG ONLY - never log or print the password
             "RAW:$password"
         } else {
             BCrypt.withDefaults().hashToString(

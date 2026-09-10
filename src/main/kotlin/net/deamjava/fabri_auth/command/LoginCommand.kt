@@ -129,35 +129,19 @@ object LoginCommand {
         )
 
         dispatcher.register(
-            Commands.literal("migrate")
-                .then(
-                    Commands.literal("premiumToCracked")
-                        .executes { ctx ->
-                            handleMigrateRequest(ctx.source.playerOrException, MigrateDirection.PREMIUM_TO_CRACKED)
-                            1
-                        }
-                )
-                .then(
-                    Commands.literal("crackedToPremium")
-                        .executes { ctx ->
-                            handleMigrateRequest(ctx.source.playerOrException, MigrateDirection.CRACKED_TO_PREMIUM)
-                            1
-                        }
-                )
-                .then(
-                    Commands.literal("confirm")
-                        .executes { ctx ->
-                            handleMigrateConfirm(ctx.source.playerOrException)
-                            1
-                        }
-                )
-                .then(
-                    Commands.literal("cancel")
-                        .executes { ctx ->
-                            handleMigrateCancel(ctx.source.playerOrException)
-                            1
-                        }
-                )
+            Commands.literal("confirm")
+                .executes { ctx ->
+                    handleMigrateConfirm(ctx.source.playerOrException)
+                    1
+                }
+        )
+
+        dispatcher.register(
+            Commands.literal("cancel")
+                .executes { ctx ->
+                    handleMigrateCancel(ctx.source.playerOrException)
+                    1
+                }
         )
 
         dispatcher.register(
@@ -377,61 +361,11 @@ object LoginCommand {
 
 
     fun handlePremium(player: ServerPlayer) {
-        val cfg = ConfigLoader.config
-//        if (cfg.autoPremiumLogin) {
-//            player.sendMessage(cfg.messagePremiumCmdUnavailable)
-//            return
-//        }
-
-        val uuid = player.uuid
-        val username = player.name.string
-
-        if (!AuthStateManager.isAuthenticated(uuid)) {
-            player.sendMessage(cfg.messageNotLoggedIn)
-            return
-        }
-
-        if (AuthStateManager.getJoinMode(uuid) == JoinMode.PREMIUM) {
-            player.sendMessage(cfg.messageAlreadyPremium)
-            return
-        }
-
-        CompletableFuture.supplyAsync {
-            PremiumManager.fetchMojangUuid(username)
-        }.thenAcceptAsync({ mojangUuid ->
-            if (mojangUuid == null) {
-                player.sendMessage(cfg.messagePremiumNotFound)
-            } else {
-                AuthStateManager.setPremiumMode(uuid, username, enable = true, mojangUuid = mojangUuid)
-                player.sendMessage(cfg.messagePremiumSuccess)
-                player.connection.disconnect(
-                    Component.literal("§aPremium mode enabled. Please reconnect to authenticate with Mojang.")
-                )
-            }
-        }, player.level().server)
+        handleMigrateRequest(player, MigrateDirection.CRACKED_TO_PREMIUM)
     }
 
-
     fun handleCracked(player: ServerPlayer) {
-        val cfg = ConfigLoader.config
-//        if (cfg.autoPremiumLogin) {
-//            player.sendMessage(cfg.messagePremiumCmdUnavailable)
-//            return
-//        }
-
-        val uuid = player.uuid
-        val username = player.name.string
-
-        if (AuthStateManager.getJoinMode(uuid) == JoinMode.OFFLINE) {
-            player.sendMessage(cfg.messageAlreadyCracked)
-            return
-        }
-
-        AuthStateManager.setPremiumMode(uuid, username, enable = false)
-        player.sendMessage(cfg.messageCrackedSuccess)
-        player.connection.disconnect(
-            Component.literal("§aCracked mode enabled. Please reconnect.")
-        )
+        handleMigrateRequest(player, MigrateDirection.PREMIUM_TO_CRACKED)
     }
 
 
@@ -471,7 +405,7 @@ object LoginCommand {
         }
         player.sendMessage("§c⚠ This will migrate your account from $fromLabel to $toLabel mode.")
         player.sendMessage("§cYour password and registration move with it, but this action is IRREVERSIBLE.")
-        player.sendMessage("§eType §f/migrate confirm §eto proceed, or §f/migrate cancel §eto abort. " +
+        player.sendMessage("§eType §f/confirm §eto proceed, or §f/cancel §eto abort. " +
                 "This request expires in 30 seconds.")
     }
 
@@ -532,6 +466,11 @@ object LoginCommand {
         val username = player.name.string
 
         when (PlayerDataMigrator.migrate(player, sourceUuid, targetUuid)) {
+            PlayerDataMigrator.MigrationResult.SaveFailed -> {
+                player.sendMessage("§cMigration aborted: could not save your current data first. " +
+                        "Nothing was changed — please try again, or contact an admin if this keeps happening.")
+                return
+            }
             PlayerDataMigrator.MigrationResult.NothingToMigrate -> {
                 println("[FabriAuth] No vanilla save data found to migrate for $username; " +
                         "continuing with account-record migration only.")

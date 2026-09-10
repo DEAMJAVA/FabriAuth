@@ -1,22 +1,16 @@
 {
-  "type": "minecraft:overworld",
+  "type": "fabri_auth:limbo",
   "generator": {
     "type": "minecraft:flat",
     "settings": {
       "biome": "minecraft:plains",
       "layers": [
-        {
-          "height": 1,
-          "block": "minecraft:barrier"
-        },
-        {
-          "height": 63,
-          "block": "minecraft:air"
-        }
+        { "height": 1,  "block": "minecraft:barrier" },
+        { "height": 63, "block": "minecraft:air" }
       ],
       "features": false,
       "lakes": false,
-      "structures:": false
+      "structures": false
     }
   }
 }

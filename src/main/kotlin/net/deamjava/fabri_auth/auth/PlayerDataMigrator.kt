@@ -13,12 +13,15 @@ object PlayerDataMigrator {
     sealed class MigrationResult {
         object Success : MigrationResult()
         object NothingToMigrate : MigrationResult()
+        object SaveFailed : MigrationResult()
     }
 
     fun migrate(player: ServerPlayer, sourceUuid: UUID, targetUuid: UUID): MigrationResult {
         val server = player.level().server
 
-        forceSavePlayer(player)
+        if (!forceSavePlayer(player)) {
+            return MigrationResult.SaveFailed
+        }
 
         val locations = listOf(
             server.getWorldPath(LevelResource.PLAYER_DATA_DIR).toFile() to "dat",
@@ -43,16 +46,18 @@ object PlayerDataMigrator {
         return if (movedAnything) MigrationResult.Success else MigrationResult.NothingToMigrate
     }
 
-
-    private fun forceSavePlayer(player: ServerPlayer) {
-        try {
+    private fun forceSavePlayer(player: ServerPlayer): Boolean {
+        return try {
             val playerList = player.level().server.playerList
-            val saveMethod = playerList.javaClass.getDeclaredMethod("save", ServerPlayer::class.java)
+            val saveMethod = net.minecraft.server.players.PlayerList::class.java
+                .getDeclaredMethod("save", ServerPlayer::class.java)
             saveMethod.isAccessible = true
             saveMethod.invoke(playerList, player)
+            true
         } catch (e: ReflectiveOperationException) {
             println("[FabriAuth] Could not force-save ${player.name.string} before migration " +
-                    "(${e.message}); continuing with their last auto-saved data.")
+                    "(${e.message}). Aborting migration rather than moving stale data.")
+            false
         }
     }
 }

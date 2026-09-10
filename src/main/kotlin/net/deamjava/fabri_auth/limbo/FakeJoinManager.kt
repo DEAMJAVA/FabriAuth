@@ -9,6 +9,9 @@ import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.game.ClientboundChangeDifficultyPacket
 import net.minecraft.network.protocol.game.ClientboundLoginPacket
 import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket
+import net.minecraft.network.protocol.game.ClientboundRespawnPacket
+import net.minecraft.network.protocol.game.ClientboundSetDefaultSpawnPositionPacket
+import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket
 import net.minecraft.network.protocol.game.GameProtocols
 import net.minecraft.resources.Identifier
@@ -25,24 +28,7 @@ import net.minecraft.world.level.block.Blocks
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Replaces the old "join for real, then teleport to a limbo dimension" flow.
- *
- * PlayerListMixin cancels PlayerList#placeNewPlayer BEFORE it runs for any
- * not-yet-authenticated player, and hands control here instead. We build our
- * own ServerGamePacketListenerImpl bound to a private limbo ServerLevel
- * WITHOUT ever calling placeNewPlayer's world-registration side effects
- * (players list / playersByUUID / join broadcast / scoreboard / tab list).
- * As far as the rest of the server and every other player are concerned,
- * this connection has not joined.
- *
- * On successful /login or /register, [promote] restores the player's real
- * level, position and inventory, then calls the REAL placeNewPlayer again.
- * Because AuthStateManager now reports them authenticated, PlayerListMixin
- * lets that call through untouched, and vanilla performs a completely normal
- * join — the client re-inits cleanly off a fresh ClientboundLoginPacket,
- * exactly like any other dimension change.
- */
+
 object FakeJoinManager {
 
     private data class FakeSession(
@@ -68,12 +54,6 @@ object FakeJoinManager {
 
     fun isFakeSession(uuid: UUID): Boolean = sessions.containsKey(uuid)
 
-    /**
-     * Called from PlayerListMixin/FabriAuthJoinGate instead of letting the
-     * real placeNewPlayer run. Must not throw uncaught — on any setup
-     * failure we disconnect cleanly rather than leaving the client stuck on
-     * the "joining world" screen forever.
-     */
     fun beginFakeSession(
         playerList: PlayerList,
         connection: Connection,
@@ -92,10 +72,6 @@ object FakeJoinManager {
         try {
             ensureLimboFloor(limboLevel)
 
-            // Snapshot the player's REAL level/position/inventory before we
-            // ever overwrite them for limbo display. placeNewPlayer trusts
-            // player.level() directly, so this must be restored in promote()
-            // before we call it again.
             val realLevel = player.level()
             val realX = player.x
             val realY = player.y
@@ -119,7 +95,6 @@ object FakeJoinManager {
                 ),
                 playerConnection
             )
-            // ServerGamePacketListenerImpl's constructor already sets player.connection = this.
 
             val levelData = limboLevel.levelData
             playerConnection.send(
@@ -141,6 +116,7 @@ object FakeJoinManager {
             playerConnection.send(ClientboundChangeDifficultyPacket(levelData.difficulty, levelData.isDifficultyLocked))
             playerConnection.send(ClientboundPlayerAbilitiesPacket(player.abilities))
             playerConnection.send(ClientboundSetHeldSlotPacket(player.inventory.selectedSlot))
+            server.commands.sendCommands(player)
 
             playerList.sendLevelInfo(player, limboLevel)
             limboLevel.addNewPlayer(player)
@@ -157,29 +133,25 @@ object FakeJoinManager {
         }
     }
 
-    /**
-     * Drives keepalive / chat-spam decay / idle-timeout for fake sessions.
-     * These players are never in PlayerList#players, so the server's normal
-     * per-tick player loop skips them entirely — without this, their
-     * connection can silently time out while they're sitting at the
-     * password prompt. Call once per server tick.
-     */
+
     fun tickAll() {
         if (sessions.isEmpty()) return
         for (session in sessions.values) {
             try {
                 session.player.connection.tick()
+                session.player.level().chunkSource.move(session.player)
             } catch (e: Exception) {
                 println("[FabriAuth] Error ticking fake-limbo session for ${session.player.name.string}: ${e.message}")
             }
         }
     }
 
-    /** Called once /login, /register, or async premium verification succeeds. */
     fun promote(uuid: UUID) {
         val session = sessions.remove(uuid) ?: return
         val player = session.player
+        val playerList = session.playerList
 
+        // Restore the real inventory (unchanged from before).
         player.inventory.clearContent()
         session.savedInventory.forEachIndexed { i, stack ->
             if (i < player.inventory.containerSize) player.inventory.setItem(i, stack.copy())
@@ -188,23 +160,49 @@ object FakeJoinManager {
         val limboLevel = player.level()
         limboLevel.removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION)
 
-        player.setServerLevel(session.realLevel)
+        val realLevel = session.realLevel
+        player.setServerLevel(realLevel)
         player.absSnapTo(session.realX, session.realY, session.realZ, session.realYRot, session.realXRot)
 
-        // Re-entering placeNewPlayer re-triggers PlayerListMixin's gate; since
-        // AuthStateManager now reports this uuid authenticated, it lets the
-        // full vanilla join run — sending a fresh ClientboundLoginPacket that
-        // fully re-initializes the client into the player's real world.
-        session.playerList.placeNewPlayer(session.connection, player, session.cookie)
+        val playerConnection = player.connection
+        val levelData = realLevel.levelData
+
+
+        playerConnection.send(
+            ClientboundRespawnPacket(player.createCommonSpawnInfo(realLevel), 1)
+        )
+        playerConnection.teleport(player.x, player.y, player.z, player.yRot, player.xRot)
+        playerConnection.send(ClientboundSetDefaultSpawnPositionPacket(realLevel.respawnData))
+        playerConnection.send(ClientboundChangeDifficultyPacket(levelData.difficulty, levelData.isDifficultyLocked))
+        playerConnection.send(
+            ClientboundSetExperiencePacket(
+                player.experienceProgress,
+                player.totalExperience,
+                player.experienceLevel
+            )
+        )
+        playerConnection.send(ClientboundSetHeldSlotPacket(player.inventory.selectedSlot))
+
+        playerList.sendActivePlayerEffects(player)
+        playerList.sendLevelInfo(player, realLevel)
+        playerList.sendPlayerPermissionLevel(player)
+
+        playerList.players.add(player)
+        playerList.playersByUUID[player.uuid] = player
+
+        playerList.broadcastAll(
+            net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(listOf(player))
+        )
+
+        realLevel.addNewPlayer(player)
+        player.initInventoryMenu()
+
+        playerList.broadcastSystemMessage(
+            Component.translatable("multiplayer.player.joined", player.displayName).withStyle(net.minecraft.ChatFormatting.YELLOW),
+            false
+        )
     }
 
-    /**
-     * Called from ServerGamePacketListenerImplMixin's onDisconnect hook when
-     * a fake-session connection dies before ever logging in. Must run BEFORE
-     * vanilla's own onDisconnect -> removePlayerFromWorld -> PlayerList#remove
-     * -> save() sequence, so the restored (non-cleared) inventory is what
-     * actually gets persisted to disk.
-     */
     fun onDisconnect(uuid: UUID) {
         val session = sessions.remove(uuid) ?: return
         val player = session.player

@@ -1,9 +1,6 @@
 package net.deamjava.fabri_auth
 
-import net.deamjava.fabri_auth.auth.AuthState
 import net.deamjava.fabri_auth.auth.AuthStateManager
-import net.deamjava.fabri_auth.auth.JoinMode
-import net.deamjava.fabri_auth.auth.PremiumManager
 import net.deamjava.fabri_auth.command.LoginCommand
 import net.deamjava.fabri_auth.config.ConfigLoader
 import net.deamjava.fabri_auth.integration.CarpetHook
