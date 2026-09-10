@@ -31,6 +31,14 @@ import java.util.concurrent.ConcurrentHashMap
 
 object FakeJoinManager {
 
+    private val unsetRemovedMethod = Entity::class.java.getDeclaredMethod("unsetRemoved").apply {
+        isAccessible = true
+    }
+
+    private fun unsetRemoved(player: ServerPlayer) {
+        unsetRemovedMethod.invoke(player)
+    }
+
     private data class FakeSession(
         val player: ServerPlayer,
         val connection: Connection,
@@ -83,6 +91,9 @@ object FakeJoinManager {
             if (ConfigLoader.config.limboClearInventory) {
                 player.inventory.clearContent()
             }
+
+            realLevel.removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION)
+            unsetRemoved(player)
 
             player.setServerLevel(limboLevel)
             player.absSnapTo(LIMBO_SPAWN_X, LIMBO_SPAWN_Y, LIMBO_SPAWN_Z, 0f, 0f)
