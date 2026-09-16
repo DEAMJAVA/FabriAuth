@@ -163,7 +163,6 @@ object FakeJoinManager {
         val player = session.player
         val playerList = session.playerList
 
-        // Restore the real inventory (unchanged from before).
         player.inventory.clearContent()
         session.savedInventory.forEachIndexed { i, stack ->
             if (i < player.inventory.containerSize) player.inventory.setItem(i, stack.copy())
@@ -171,14 +170,21 @@ object FakeJoinManager {
 
         val limboLevel = player.level()
         limboLevel.removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION)
+        unsetRemoved(player)
+
+        limboLevel.chunkSource.removeEntity(player)
 
         val realLevel = session.realLevel
         player.setServerLevel(realLevel)
         player.absSnapTo(session.realX, session.realY, session.realZ, session.realYRot, session.realXRot)
 
+        player.setYHeadRot(session.realYRot)
+        player.setYBodyRot(session.realYRot)
+        player.yRotO = session.realYRot
+        player.xRotO = session.realXRot
+
         val playerConnection = player.connection
         val levelData = realLevel.levelData
-
 
         playerConnection.send(
             ClientboundRespawnPacket(player.createCommonSpawnInfo(realLevel), 1)
@@ -198,6 +204,10 @@ object FakeJoinManager {
         playerList.sendActivePlayerEffects(player)
         playerList.sendLevelInfo(player, realLevel)
         playerList.sendPlayerPermissionLevel(player)
+
+        playerConnection.send(
+            net.minecraft.network.protocol.game.ClientboundPlayerInfoUpdatePacket.createPlayerInitializing(playerList.players)
+        )
 
         playerList.players.add(player)
         playerList.playersByUUID[player.uuid] = player
