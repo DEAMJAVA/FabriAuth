@@ -99,6 +99,7 @@ object FakeJoinManager {
             player.absSnapTo(LIMBO_SPAWN_X, LIMBO_SPAWN_Y, LIMBO_SPAWN_Z, 0f, 0f)
 
             val playerConnection = ServerGamePacketListenerImpl(server, connection, player, cookie)
+            player.connection = playerConnection
             connection.setupInboundProtocol(
                 GameProtocols.SERVERBOUND_TEMPLATE.bind(
                     RegistryFriendlyByteBuf.decorator(server.registryAccess()),
