@@ -46,7 +46,7 @@ object PlayerDataMigrator {
         return if (movedAnything) MigrationResult.Success else MigrationResult.NothingToMigrate
     }
 
-    private fun forceSavePlayer(player: ServerPlayer): Boolean {
+    internal fun forceSavePlayer(player: ServerPlayer): Boolean {
         return try {
             val playerList = player.level().server.playerList
             val saveMethod = net.minecraft.server.players.PlayerList::class.java

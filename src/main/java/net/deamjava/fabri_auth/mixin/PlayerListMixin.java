@@ -1,5 +1,6 @@
 package net.deamjava.fabri_auth.mixin;
 
+import net.deamjava.fabri_auth.auth.AuthStateManager;
 import net.deamjava.fabri_auth.config.ConfigLoader;
 import net.deamjava.fabri_auth.join.FabriAuthJoinGate;
 import net.minecraft.network.Connection;
@@ -30,4 +31,14 @@ public abstract class PlayerListMixin {
             ci.cancel();
         }
     }
+
+    @Inject(method = "save", at = @At("HEAD"), cancellable = true)
+    private void fabriAuth$skipSaveWhileUnauthed(ServerPlayer player, CallbackInfo ci) {
+        if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
+        if (!ConfigLoader.INSTANCE.getConfig().getRequireLogin()) return;
+        if (AuthStateManager.INSTANCE.isAuthenticated(player.getUUID())) return;
+
+        ci.cancel();
+    }
+
 }

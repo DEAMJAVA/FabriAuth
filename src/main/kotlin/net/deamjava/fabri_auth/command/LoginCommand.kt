@@ -296,6 +296,7 @@ object LoginCommand {
 
     fun handleLogout(player: ServerPlayer) {
         val uuid = player.uuid
+        PlayerDataMigrator.forceSavePlayer(player)
         AuthStateManager.setState(uuid, AuthState.UNAUTHENTICATED)
         SessionManager.invalidateSession(uuid)
         LuckPermsHook.invalidateContexts(player)
