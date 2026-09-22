@@ -1,5 +1,6 @@
 package net.deamjava.fabri_auth.limbo
 
+import net.deamjava.fabri_auth.auth.AuthStateManager
 import net.deamjava.fabri_auth.config.ConfigLoader
 import net.minecraft.core.BlockPos
 import net.minecraft.core.registries.Registries
@@ -13,6 +14,9 @@ import net.minecraft.network.protocol.game.ClientboundRespawnPacket
 import net.minecraft.network.protocol.game.ClientboundSetDefaultSpawnPositionPacket
 import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket
 import net.minecraft.network.protocol.game.GameProtocols
 import net.minecraft.resources.Identifier
 import net.minecraft.resources.ResourceKey
@@ -50,7 +54,8 @@ object FakeJoinManager {
         val realY: Double,
         val realZ: Double,
         val realYRot: Float,
-        val realXRot: Float
+        val realXRot: Float,
+        var ticksInLimbo: Int = 0
     )
 
     private val sessions = ConcurrentHashMap<UUID, FakeSession>()
@@ -59,6 +64,8 @@ object FakeJoinManager {
     private val LIMBO_SPAWN_X get() = LIMBO_SPAWN.x.toDouble() + 0.5
     private val LIMBO_SPAWN_Y get() = LIMBO_SPAWN.y.toDouble()
     private val LIMBO_SPAWN_Z get() = LIMBO_SPAWN.z.toDouble() + 0.5
+
+    private const val REMINDER_INTERVAL_TICKS = 100
 
     fun isFakeSession(uuid: UUID): Boolean = sessions.containsKey(uuid)
 
@@ -134,6 +141,7 @@ object FakeJoinManager {
             limboLevel.addNewPlayer(player)
             player.initInventoryMenu()
             playerConnection.teleport(LIMBO_SPAWN_X, LIMBO_SPAWN_Y, LIMBO_SPAWN_Z, 0f, 0f)
+            sendLimboTitle(player)
 
             sessions[player.uuid] = FakeSession(
                 player, connection, cookie, playerList, savedInventory,
@@ -152,6 +160,12 @@ object FakeJoinManager {
             try {
                 session.player.connection.tick()
                 session.player.level().chunkSource.move(session.player)
+
+                session.ticksInLimbo++
+                if (session.ticksInLimbo >= REMINDER_INTERVAL_TICKS) {
+                    session.ticksInLimbo = 0
+                    sendLimboReminder(session.player)
+                }
             } catch (e: Exception) {
                 println("[FabriAuth] Error ticking fake-limbo session for ${session.player.name.string}: ${e.message}")
             }
@@ -264,4 +278,26 @@ object FakeJoinManager {
 
     private fun copyInventory(player: ServerPlayer): List<ItemStack> =
         (0 until player.inventory.containerSize).map { i -> player.inventory.getItem(i).copy() }
+
+    private fun limboPrompt(uuid: UUID): Pair<String, String> {
+        val cfg = ConfigLoader.config
+        return if (AuthStateManager.isRegistered(uuid)) {
+            "§e§lLOG IN" to cfg.messageNotLoggedIn
+        } else {
+            "§a§lREGISTER" to cfg.messageNotRegistered
+        }
+    }
+
+    private fun sendLimboTitle(player: ServerPlayer) {
+        val (title, subtitle) = limboPrompt(player.uuid)
+        player.connection.send(ClientboundSetTitlesAnimationPacket(5, 40, 10))
+        player.connection.send(ClientboundSetTitleTextPacket(Component.literal(title)))
+        player.connection.send(ClientboundSetSubtitleTextPacket(Component.literal(subtitle)))
+    }
+
+    private fun sendLimboReminder(player: ServerPlayer) {
+        val (_, message) = limboPrompt(player.uuid)
+        player.sendSystemMessage(Component.literal(message))
+        sendLimboTitle(player)
+    }
 }
