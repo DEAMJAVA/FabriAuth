@@ -17,7 +17,6 @@ import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -97,6 +96,11 @@ public abstract class ServerLoginPacketListenerImplMixin {
         }
 
         if (!profileId.equals(mojangUuid)) {
+            if (decision == IdentityDecision.ALLOW_AND_RECORD) {
+                AuthStateManager.INSTANCE.setJoinMode(offlineUuid, username, net.deamjava.fabri_auth.auth.JoinMode.OFFLINE);
+                return;
+            }
+
             this.disconnect(Component.literal(
                     "Premium username detected, but the Mojang session is invalid."
             ));
@@ -130,7 +134,6 @@ public abstract class ServerLoginPacketListenerImplMixin {
             Field stateField = null;
             for (Field f : ServerLoginPacketListenerImpl.class.getDeclaredFields()) {
                 if (f.getType().isEnum()) {
-                    // Check if this enum has the state we're looking for
                     boolean hasKey = false;
                     for (Object constant : f.getType().getEnumConstants()) {
                         if (((Enum<?>)constant).name().equals(stateName)) {
