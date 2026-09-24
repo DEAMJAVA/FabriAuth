@@ -8,9 +8,12 @@ import net.minecraft.network.Connection
 import net.minecraft.network.RegistryFriendlyByteBuf
 import net.minecraft.network.chat.Component
 import net.minecraft.network.protocol.game.ClientboundChangeDifficultyPacket
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket
 import net.minecraft.network.protocol.game.ClientboundLoginPacket
 import net.minecraft.network.protocol.game.ClientboundPlayerAbilitiesPacket
 import net.minecraft.network.protocol.game.ClientboundRespawnPacket
+import net.minecraft.network.protocol.game.ClientboundSetChunkCacheCenterPacket
+import net.minecraft.network.protocol.game.ClientboundSetChunkCacheRadiusPacket
 import net.minecraft.network.protocol.game.ClientboundSetDefaultSpawnPositionPacket
 import net.minecraft.network.protocol.game.ClientboundSetExperiencePacket
 import net.minecraft.network.protocol.game.ClientboundSetHeldSlotPacket
@@ -66,6 +69,9 @@ object FakeJoinManager {
     private val LIMBO_SPAWN_Z get() = LIMBO_SPAWN.z.toDouble() + 0.5
 
     private const val REMINDER_INTERVAL_TICKS = 100
+
+
+    private const val LIMBO_CHUNK_GRID_SIZE = 16
 
     fun isFakeSession(uuid: UUID): Boolean = sessions.containsKey(uuid)
 
@@ -136,6 +142,8 @@ object FakeJoinManager {
             playerConnection.send(ClientboundPlayerAbilitiesPacket(player.abilities))
             playerConnection.send(ClientboundSetHeldSlotPacket(player.inventory.selectedSlot))
             server.commands.sendCommands(player)
+
+            sendLimboChunks(limboLevel, playerConnection)
 
             playerList.sendLevelInfo(player, limboLevel)
             limboLevel.addNewPlayer(player)
@@ -246,6 +254,22 @@ object FakeJoinManager {
         player.inventory.clearContent()
         session.savedInventory.forEachIndexed { i, stack ->
             if (i < player.inventory.containerSize) player.inventory.setItem(i, stack.copy())
+        }
+    }
+
+    private fun sendLimboChunks(limboLevel: ServerLevel, connection: ServerGamePacketListenerImpl) {
+        val centerChunkX = LIMBO_SPAWN.x shr 4
+        val centerChunkZ = LIMBO_SPAWN.z shr 4
+        val half = LIMBO_CHUNK_GRID_SIZE / 2
+
+        connection.send(ClientboundSetChunkCacheCenterPacket(centerChunkX, centerChunkZ))
+        connection.send(ClientboundSetChunkCacheRadiusPacket(half))
+
+        for (dx in -half until half) {
+            for (dz in -half until half) {
+                val chunk = limboLevel.getChunk(centerChunkX + dx, centerChunkZ + dz)
+                connection.send(ClientboundLevelChunkWithLightPacket(chunk, limboLevel.lightEngine, null, null))
+            }
         }
     }
 
