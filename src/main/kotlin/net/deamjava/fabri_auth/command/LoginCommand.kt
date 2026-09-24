@@ -241,6 +241,32 @@ object LoginCommand {
                                 }
                         )
                 )
+
+                .then(
+                    Commands.literal("migrate")
+                        .then(
+                            Commands.literal("premium")
+                                .then(
+                                    Commands.argument("username", StringArgumentType.word())
+                                        .executes { ctx ->
+                                            val username = StringArgumentType.getString(ctx, "username")
+                                            handleAdminMigratePremium(ctx.source, username)
+                                            1
+                                        }
+                                )
+                        )
+                        .then(
+                            Commands.literal("cracked")
+                                .then(
+                                    Commands.argument("username", StringArgumentType.word())
+                                        .executes { ctx ->
+                                            val username = StringArgumentType.getString(ctx, "username")
+                                            handleAdminMigrateCracked(ctx.source, username)
+                                            1
+                                        }
+                                )
+                        )
+                )
         )
     }
 
@@ -567,6 +593,78 @@ object LoginCommand {
             } else {
                 source.sendSystemMessage(Component.literal("§a$username has been set to cracked/offline mode (offline update)."))
             }
+        }
+    }
+
+
+    private fun handleAdminMigratePremium(source: CommandSourceStack, username: String) {
+        val onlinePlayer = source.server.playerList.getPlayerByName(username)
+        val sourceUuid = onlinePlayer?.uuid ?: PremiumManager.offlineUuid(username)
+
+        source.sendSystemMessage(Component.literal("§eResolving Mojang account for '$username'..."))
+        CompletableFuture.supplyAsync {
+            PremiumManager.fetchMojangUuid(username)
+        }.thenAcceptAsync({ mojangUuid ->
+            if (mojangUuid == null) {
+                source.sendSystemMessage(
+                    Component.literal("§cCould not verify a Mojang account for '$username'. Migration aborted, nothing was changed.")
+                )
+                return@thenAcceptAsync
+            }
+
+            // migrateAccountData falls back to searching by username if sourceUuid isn't found,
+            // so this also cleans up any other stray record sharing this username.
+            val migrated = AuthStateManager.migrateAccountData(sourceUuid, mojangUuid, username, toPremium = true)
+            if (!migrated) {
+                source.sendSystemMessage(
+                    Component.literal("§cNo stored record found for '$username'. They must join the server at least once first.")
+                )
+                return@thenAcceptAsync
+            }
+
+            SessionManager.invalidateSession(sourceUuid)
+            if (onlinePlayer != null) {
+                SessionManager.invalidateSession(onlinePlayer.uuid)
+                source.sendSystemMessage(
+                    Component.literal("§a$username's data has been migrated to premium identity ($mojangUuid).")
+                )
+                onlinePlayer.connection.disconnect(
+                    Component.literal("§aAn admin has migrated your account to premium mode. Please reconnect with your official Minecraft account.")
+                )
+            } else {
+                source.sendSystemMessage(
+                    Component.literal("§a$username's data has been migrated to premium identity ($mojangUuid) (offline update).")
+                )
+            }
+        }, source.server)
+    }
+
+    private fun handleAdminMigrateCracked(source: CommandSourceStack, username: String) {
+        val onlinePlayer = source.server.playerList.getPlayerByName(username)
+        val sourceUuid = onlinePlayer?.uuid ?: PremiumManager.offlineUuid(username)
+        val targetUuid = PremiumManager.offlineUuid(username)
+
+        val migrated = AuthStateManager.migrateAccountData(sourceUuid, targetUuid, username, toPremium = false)
+        if (!migrated) {
+            source.sendSystemMessage(
+                Component.literal("§cNo stored record found for '$username'. They must join the server at least once first.")
+            )
+            return
+        }
+
+        SessionManager.invalidateSession(sourceUuid)
+        if (onlinePlayer != null) {
+            SessionManager.invalidateSession(onlinePlayer.uuid)
+            source.sendSystemMessage(
+                Component.literal("§a$username's data has been migrated to cracked/offline identity.")
+            )
+            onlinePlayer.connection.disconnect(
+                Component.literal("§aAn admin has migrated your account to cracked/offline mode. Please reconnect.")
+            )
+        } else {
+            source.sendSystemMessage(
+                Component.literal("§a$username's data has been migrated to cracked/offline identity (offline update).")
+            )
         }
     }
 
