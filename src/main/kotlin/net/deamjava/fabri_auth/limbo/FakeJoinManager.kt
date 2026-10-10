@@ -93,19 +93,38 @@ object FakeJoinManager {
         try {
             ensureLimboFloor(limboLevel)
 
-            val realLevel = player.level()
-            val realX = player.x
-            val realY = player.y
-            val realZ = player.z
-            val realYRot = player.yRot
-            val realXRot = player.xRot
+            var realLevel = player.level()
+            var realX = player.x
+            var realY = player.y
+            var realZ = player.z
+            var realYRot = player.yRot
+            var realXRot = player.xRot
+
+            if (player.isDeadOrDying) {
+                val spawn = server.overworld().respawnData
+                server.getLevel(spawn.dimension())?.let { realLevel = it }
+                realX = spawn.pos().x + 0.5
+                realY = spawn.pos().y.toDouble()
+                realZ = spawn.pos().z + 0.5
+                realYRot = spawn.yaw()
+                realXRot = spawn.pitch()
+
+                player.health = player.maxHealth
+                player.deathTime = 0
+                player.clearFire()
+                player.removeAllEffects()
+                player.foodData.foodLevel = 20
+                player.foodData.setSaturation(5f)
+                player.fallDistance = 0.0
+                player.setDeltaMovement(0.0, 0.0, 0.0)
+            }
 
             val savedInventory = copyInventory(player)
             if (ConfigLoader.config.limboClearInventory) {
                 player.inventory.clearContent()
             }
 
-            realLevel.removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION)
+            player.level().removePlayerImmediately(player, Entity.RemovalReason.CHANGED_DIMENSION)
             unsetRemoved(player)
 
             player.setServerLevel(limboLevel)

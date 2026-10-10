@@ -4,10 +4,7 @@ import net.deamjava.fabri_auth.command.LoginCommand;
 import net.deamjava.fabri_auth.config.ConfigLoader;
 import net.deamjava.fabri_auth.limbo.FakeJoinManager;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundChatCommandPacket;
-import net.minecraft.network.protocol.game.ServerboundChatPacket;
-import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
-import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
+import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import org.spongepowered.asm.mixin.Mixin;
@@ -74,6 +71,15 @@ public abstract class ServerGamePacketListenerImplMixin {
                 action == ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS)
                 && LoginCommand.isBlocked(player)
                 && FakeJoinManager.INSTANCE.isFakeSession(player.getUUID())) {
+            ci.cancel();
+        }
+    }
+
+    @Inject(method = "handleClientCommand", at = @At("HEAD"), cancellable = true)
+    private void fabriAuth$blockRespawnInLimbo(ServerboundClientCommandPacket packet, CallbackInfo ci) {
+        if (!ConfigLoader.INSTANCE.getConfig().getEnabled()) return;
+        if (FakeJoinManager.INSTANCE.isFakeSession(player.getUUID())
+                && packet.getAction() == ServerboundClientCommandPacket.Action.PERFORM_RESPAWN) {
             ci.cancel();
         }
     }
